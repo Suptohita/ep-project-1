@@ -8,7 +8,6 @@ const int potPin = 4;
 const int redLed = 17;
 const int tempPin = 34;
 
-// BMP280
 Adafruit_BMP280 bmp;
 bool bmpReady = false;
 
@@ -28,20 +27,24 @@ void setup() {
 
 void loop() {
   float temp = bmp.readTemperature();
-  float pressure = bmp.readPressure()/100;
+  float pressure = bmp.readPressure() / 100;
   float altitude = bmp.readAltitude(1013.25);
   int potValue = analogRead(potPin);
+  int pwmValue = map(potValue, 100, 4095, 0, 255);
+
+  pwmValue = constrain(pwmValue, 0, 255);
+
 
   Serial.printf("Temperature: %.2f °C\n", temp);
   Serial.printf("Pressure: %.2f Pa\n", pressure);
   Serial.printf("Altitude: %.2f m\n", altitude);
-  Serial.printf("Pot Value: %d\n", potValue);
+  Serial.printf("Pot Value: %d, PWM: %d\n", potValue, pwmValue);
   Serial.println();
 
   if (temp > 25) {
     digitalWrite(redLed, HIGH);
     digitalWrite(greenLed, LOW);
-    analogWrite(fanPin, 255);
+    analogWrite(fanPin, pwmValue);
   } else {
     digitalWrite(redLed, LOW);
     digitalWrite(greenLed, HIGH);
