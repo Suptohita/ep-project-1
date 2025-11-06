@@ -3,10 +3,10 @@
 #include <Adafruit_BMP280.h>
 
 const int fanPin = 18;
-const int tempPin = 34;
+const int greenLed = 19;
 const int potPin = 4;
 const int redLed = 17;
-const int greenLed = 19;
+const int tempPin = 34;
 
 // BMP280
 Adafruit_BMP280 bmp;
@@ -16,6 +16,7 @@ void setup() {
   Serial.begin(115200);
   pinMode(redLed, OUTPUT);
   pinMode(greenLed, OUTPUT);
+  pinMode(fanPin, OUTPUT);
 
   if (bmp.begin(0x76)) {
     bmpReady = true;
@@ -29,19 +30,23 @@ void loop() {
   float temp = bmp.readTemperature();
   float pressure = bmp.readPressure()/100;
   float altitude = bmp.readAltitude(1013.25);
+  int potValue = analogRead(potPin);
 
   Serial.printf("Temperature: %.2f °C\n", temp);
   Serial.printf("Pressure: %.2f Pa\n", pressure);
   Serial.printf("Altitude: %.2f m\n", altitude);
+  Serial.printf("Pot Value: %d\n", potValue);
   Serial.println();
 
   if (temp > 25) {
     digitalWrite(redLed, HIGH);
     digitalWrite(greenLed, LOW);
+    analogWrite(fanPin, 255);
   } else {
     digitalWrite(redLed, LOW);
     digitalWrite(greenLed, HIGH);
+    analogWrite(fanPin, 0);
   }
 
-  delay(1000);
+  delay(5000);
 }
