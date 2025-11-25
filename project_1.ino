@@ -18,23 +18,23 @@ volatile bool button_pressed_flag = false;
 volatile unsigned long last_interrupt_time = 0;
 
 void IRAM_ATTR handleButtonInterrupt() {
-    unsigned long interrupt_time = millis();
-    if (interrupt_time - last_interrupt_time > 50) {
-        button_pressed_flag = true;
-        last_interrupt_time = interrupt_time;
-    }
+  unsigned long interrupt_time = millis();
+  if (interrupt_time - last_interrupt_time > 50) {
+    button_pressed_flag = true;
+    last_interrupt_time = interrupt_time;
+  }
 }
 
 void setup() {
   Serial.begin(115200);
   delay(100);
   Serial.println("\n--- ESP32 Temperature Control System ---");
-  
+
   pinMode(redLed, OUTPUT);
   pinMode(greenLed, OUTPUT);
   pinMode(fanPin, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-  
+
   digitalWrite(redLed, LOW);
   digitalWrite(greenLed, LOW);
   analogWrite(fanPin, 0);
@@ -44,9 +44,10 @@ void setup() {
     Serial.println("BMP280 sensor initialized successfully!");
   } else {
     Serial.println("Could not find a valid BMP280 sensor!");
-    while (1);
+    while (1)
+      ;
   }
-  
+
   attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
   Serial.println("System ready. Press button to start/stop.");
 }
@@ -57,7 +58,7 @@ void loop() {
     button_pressed_flag = false;
     system_enabled = !system_enabled;
     Serial.printf("System %s\n", system_enabled ? "ENABLED" : "DISABLED");
-    
+
     // Turn off everything when system is disabled
     if (!system_enabled) {
       digitalWrite(redLed, LOW);
@@ -66,9 +67,28 @@ void loop() {
     }
   }
 
+  // While system is disabled, wait for button press
+  while (!system_enabled) {
+    // Check if button was pressed to enable system
+    if (button_pressed_flag) {
+      button_pressed_flag = false;
+      system_enabled = true;
+      Serial.println("System ENABLED");
+      break;  // Exit the while loop
+    }
+    delay(100);  // Small delay to prevent busy-waiting
+  }
+
   // Only run temperature control if system is enabled
   if (system_enabled) {
-    float temp = bmp.readTemperature();
+    // Average temperature readings using for loop
+    float tempSum = 0;
+    for (int i = 0; i < 5; i++) {
+      tempSum += bmp.readTemperature();
+      delay(10);
+    }
+    float temp = tempSum / 5;
+
     float pressure = bmp.readPressure() / 100;
     float altitude = bmp.readAltitude(1013.25);
     int potValue = analogRead(potPin);
@@ -76,7 +96,7 @@ void loop() {
 
     pwmValue = constrain(pwmValue, 0, 255);
 
-    Serial.printf("Temperature: %.2f °C\n", temp);
+    Serial.printf("Temperature: %.2f °C (averaged)\n", temp);
     Serial.printf("Pressure: %.2f Pa\n", pressure);
     Serial.printf("Altitude: %.2f m\n", altitude);
     Serial.printf("Pot Value: %d, PWM: %d\n", potValue, pwmValue);
