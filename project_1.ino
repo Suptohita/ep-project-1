@@ -12,8 +12,16 @@ const int BUTTON_PIN = 15;
 Adafruit_BMP280 bmp;
 bool bmpReady = false;
 
-// System state
-volatile bool system_enabled = false;
+// State Machine
+enum SystemState {
+  STATE_OFF,
+  STATE_IDLE,
+  STATE_COOLING
+};
+
+SystemState currentState = STATE_OFF;
+
+// Button interrupt
 volatile bool button_pressed_flag = false;
 volatile unsigned long last_interrupt_time = 0;
 
@@ -50,67 +58,112 @@ void setup() {
 
   attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
   Serial.println("System ready. Press button to start/stop.");
+  Serial.println("Current State: OFF");
 }
 
 void loop() {
-  // Handle button press
+  // Handle button press - toggle between OFF and IDLE
   if (button_pressed_flag) {
     button_pressed_flag = false;
-    system_enabled = !system_enabled;
-    Serial.printf("System %s\n", system_enabled ? "ENABLED" : "DISABLED");
 
-    // Turn off everything when system is disabled
-    if (!system_enabled) {
-      digitalWrite(redLed, LOW);
-      digitalWrite(greenLed, LOW);
-      analogWrite(fanPin, 0);
-    }
-  }
-
-  // While system is disabled, wait for button press
-  while (!system_enabled) {
-    // Check if button was pressed to enable system
-    if (button_pressed_flag) {
-      button_pressed_flag = false;
-      system_enabled = true;
-      Serial.println("System ENABLED");
-      break;  // Exit the while loop
-    }
-    delay(100);  // Small delay to prevent busy-waiting
-  }
-
-  // Only run temperature control if system is enabled
-  if (system_enabled) {
-    // Average temperature readings using for loop
-    float tempSum = 0;
-    for (int i = 0; i < 5; i++) {
-      tempSum += bmp.readTemperature();
-      delay(10);
-    }
-    float temp = tempSum / 5;
-
-    float pressure = bmp.readPressure() / 100;
-    float altitude = bmp.readAltitude(1013.25);
-    int potValue = analogRead(potPin);
-    int pwmValue = map(potValue, 200, 4095, 0, 255);
-
-    pwmValue = constrain(pwmValue, 0, 255);
-
-    Serial.printf("Temperature: %.2f °C (averaged)\n", temp);
-    Serial.printf("Pressure: %.2f Pa\n", pressure);
-    Serial.printf("Altitude: %.2f m\n", altitude);
-    Serial.printf("Pot Value: %d, PWM: %d\n", potValue, pwmValue);
-    Serial.println();
-
-    if (temp > 23) {
-      digitalWrite(redLed, HIGH);
-      digitalWrite(greenLed, LOW);
-      analogWrite(fanPin, pwmValue);
+    if (currentState == STATE_OFF) {
+      currentState = STATE_IDLE;
+      Serial.println("System ENABLED - State: IDLE");
     } else {
+      currentState = STATE_OFF;
+      Serial.println("System DISABLED - State: OFF");
       digitalWrite(redLed, LOW);
-      digitalWrite(greenLed, HIGH);
+      digitalWrite(greenLed, LOW);
       analogWrite(fanPin, 0);
     }
+  }
+
+  // State Machine
+  switch (currentState) {
+    case STATE_OFF:
+      // While system is off, wait for button press
+      while (currentState == STATE_OFF) {
+        if (button_pressed_flag) {
+          button_pressed_flag = false;
+          currentState = STATE_IDLE;
+          Serial.println("System ENABLED - State: IDLE");
+          break;
+        }
+        delay(100);
+      }
+      break;
+
+    case STATE_IDLE:
+      {
+        // Average temperature readings using for loop
+        float tempSum = 0;
+        for (int i = 0; i < 5; i++) {
+          tempSum += bmp.readTemperature();
+          delay(10);
+        }
+        float temp = tempSum / 5;
+
+        float pressure = bmp.readPressure() / 100;
+        float altitude = bmp.readAltitude(1013.25);
+        int potValue = analogRead(potPin);
+        int pwmValue = map(potValue, 200, 4095, 0, 255);
+        pwmValue = constrain(pwmValue, 0, 255);
+
+        Serial.printf("State: IDLE\n");
+        Serial.printf("Temperature: %.2f °C (averaged)\n", temp);
+        Serial.printf("Pressure: %.2f hPa\n", pressure);
+        Serial.printf("Altitude: %.2f m\n", altitude);
+        Serial.printf("Pot Value: %d, PWM: %d\n", potValue, pwmValue);
+        Serial.println();
+
+        // Check if cooling is needed
+        if (temp > 23) {
+          currentState = STATE_COOLING;
+          Serial.println("Temperature exceeded! Transitioning to COOLING state");
+        } else {
+          // Stay in IDLE state
+          digitalWrite(redLed, LOW);
+          digitalWrite(greenLed, HIGH);
+          analogWrite(fanPin, 0);
+        }
+      }
+      break;
+
+    case STATE_COOLING:
+      {
+        // Average temperature readings using for loop
+        float tempSum = 0;
+        for (int i = 0; i < 5; i++) {
+          tempSum += bmp.readTemperature();
+          delay(10);
+        }
+        float temp = tempSum / 5;
+
+        float pressure = bmp.readPressure() / 100;
+        float altitude = bmp.readAltitude(1013.25);
+        int potValue = analogRead(potPin);
+        int pwmValue = map(potValue, 200, 4095, 0, 255);
+        pwmValue = constrain(pwmValue, 0, 255);
+
+        Serial.printf("State: COOLING\n");
+        Serial.printf("Temperature: %.2f °C (averaged)\n", temp);
+        Serial.printf("Pressure: %.2f hPa\n", pressure);
+        Serial.printf("Altitude: %.2f m\n", altitude);
+        Serial.printf("Pot Value: %d, PWM: %d\n", potValue, pwmValue);
+        Serial.println();
+
+        // Activate cooling
+        digitalWrite(redLed, HIGH);
+        digitalWrite(greenLed, LOW);
+        analogWrite(fanPin, pwmValue);
+
+        // Check if we can return to IDLE
+        if (temp <= 23) {
+          currentState = STATE_IDLE;
+          Serial.println("Temperature normalized! Transitioning to IDLE state");
+        }
+      }
+      break;
   }
 
   delay(2000);
