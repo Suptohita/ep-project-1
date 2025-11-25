@@ -27,7 +27,7 @@ volatile unsigned long last_interrupt_time = 0;
 
 void IRAM_ATTR handleButtonInterrupt() {
   unsigned long interrupt_time = millis();
-  if (interrupt_time - last_interrupt_time > 50) {
+  if (interrupt_time - last_interrupt_time > 100) {
     button_pressed_flag = true;
     last_interrupt_time = interrupt_time;
   }
